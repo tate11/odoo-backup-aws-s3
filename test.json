@@ -1,7 +1,0 @@
-{
-    "host": "localhost",
-    "user": "cuulong",
-    "password": "cuulong",
-    "port": 5432,
-    "db_name": "cl-1203"
-}

@@ -8,17 +8,26 @@ from botocore.exceptions import ClientError
 import os
 import paramiko
 
+
+def notify_error_and_stop_script(error):
+    # todo: 
+    # - write error to log file
+    # - send telegram message here to notify error
+    exit()
+
+
 def populate_variable():
     global secret_path
     global odoo_db_config_file
     global odoo_server_config_file
     global db_backup_file_path
     global filestore_backup_file_path
-    secret_path=os.environ.get('SECRET_PATH', '')
+    secret_path = os.environ.get('SECRET_PATH', '')
     odoo_db_config_file = os.path.join(secret_path, 'odoo-db.json')
     odoo_server_config_file = os.path.join(secret_path, 'odoo-server.json')
     db_backup_file_path = '/tmp/backup.sql'
     filestore_backup_file_path = '/tmp/filestore'
+
 
 def get_db_config(config_file):
     with open(config_file, 'r') as f:
@@ -28,7 +37,7 @@ def get_db_config(config_file):
     user = data.get('user', 'odoo')
     password = data.get('password', 'odoo')
     db_name = data.get('db_name', 'odoo')
-    
+
     return dict(
         host=host,
         port=port,
@@ -37,7 +46,8 @@ def get_db_config(config_file):
         db_name=db_name,
         db_backup_file_path=db_backup_file_path
     )
-    
+
+
 def execute_backup_db(**kwargs):
     host = kwargs.get('host')
     user = kwargs.get('user')
@@ -45,48 +55,41 @@ def execute_backup_db(**kwargs):
     port = kwargs.get('port')
     db_name = kwargs.get('db_name')
     db_backup_file_path = kwargs.get('db_backup_file_path')
-    
+
     command = f"export PGPASSWORD={password} && pg_dump -h {host} -p {port} -U {user} --no-owner --format=c {db_name} > {db_backup_file_path}"
-    process = subprocess.run(command,shell=True, capture_output=True)
+    process = subprocess.run(command, shell=True, capture_output=True)
     if process.returncode != 0:
         logging.error(f"Error backing up database: {process.stderr}")
-        # todo: 
-        # - write error to log file
-        # - send telegram message here to notify backup failed
-        exit()
+        notify_error_and_stop_script(process.stderr)
     return True
-    
+
+
 def backup_db():
     db_config = get_db_config(odoo_db_config_file)
     execute_backup_db(**db_config)
+
 
 # =============== filestore =================
 
 def get_server_config(config_file):
     with open(config_file, 'r') as f:
-        data = json.load(f)
-    host = data.get('host')
-    user = data.get('user')
-    port = data.get('port')
-    key_file = data.get('key_file')
+        config = json.load(f)
+    key_file = config.get('key_file')
     key_file_path = os.path.join(secret_path, key_file)
-    return dict(
-        host=host,
-        user=user,
-        port=port,
-        key_file_path=key_file_path,    
+    config.update(dict(
+        key_file_path=key_file_path,
         filestore_backup_file_path=filestore_backup_file_path
-    )
-    
-def connect_server(**kwargs):
-    host = kwargs.get('host')
-    user = kwargs.get('user')
-    port = kwargs.get('port')
-    key_file_path = kwargs.get('key_file_path')
-    filestore_backup_file_path = kwargs.get('filestore_backup_file_path')
-    #fixme
-    key_file_path = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/cuulong16g_key.pem"
+    ))
+    return config
 
+
+def connect_server(**kwargs):
+    host = kwargs.get('server_host')
+    user = kwargs.get('server_user')
+    port = kwargs.get('server_port')
+    key_file_path = kwargs.get('key_file_path')
+    # fixme
+    key_file_path = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/cuulong16g_key.pem"
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
@@ -94,37 +97,60 @@ def connect_server(**kwargs):
         ssh.connect(hostname=host, username=user, port=port, pkey=key)
         return ssh
     except paramiko.AuthenticationException:
-        logging.error("Authentication failed!")
-        return False    
-    
-def execute_backup_filestore(**kwargs):
-    host = kwargs.get('host')
-    user = kwargs.get('user')
-    port = kwargs.get('port')
-    key_file_path = kwargs.get('key_file_path')
-    filestore_backup_file_path = kwargs.get('filestore_backup_file_path')
-    #fixme
-    key_file_path = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/cuulong16g_key.pem"
+        notify_error_and_stop_script("Authentication failed!")
 
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    try:
-        key = paramiko.RSAKey.from_private_key_file(key_file_path)
-        ssh.connect(hostname=host, username=user, port=port, pkey=key)
-        backup_command = ""
+
+def execute_backup_filestore(ssh, **kwargs):
+    odoo_docker_image = kwargs.get('odoo_docker_image')
+    if odoo_docker_image:
+        execute_backup_filestore_docker(ssh, **kwargs)
+    else:
+        execute_backup_filestore_normal(ssh, **kwargs)
+
+
+def execute_backup_filestore_docker(ssh, **kwargs):
+    def execute_host_command(command):
         stdin, stdout, stderr = ssh.exec_command(command)
+        return stdout.read().decode()
 
-    except paramiko.AuthenticationException:
-        logging.error("Authentication failed!")
-        return False
-    
+    def execute_container_command(command):
+        return execute_host_command(f"docker exec {container_id} sh -c '{command}'")
+
+    def get_odoo_container_id():
+        odoo_docker_image = kwargs.get('odoo_docker_image')
+        command = "docker ps -q -a | xargs docker inspect --format '{{.Id}} {{.Config.Image}}' | awk -v img=\"%s\" '$2 == img {print $1}'" % odoo_docker_image
+        return execute_host_command(command).strip()
+
+    db_name = kwargs.get('db_name')
+    datadir_path = kwargs.get('datadir_path')
+    filestore_path = os.path.join(datadir_path, 'filestore', db_name)
+    container_id = get_odoo_container_id()
+
+    filestore_backup_name = f"{db_name}.tar.gz"
+    filestore_backup_path = f"/tmp/{filestore_backup_name}"
+    backup_command = f'docker exec {container_id} sh -c "tar czf {filestore_backup_path} {filestore_path}"'
+    res = execute_container_command(backup_command)
+    print(res)
+
+    copy_backup_file_to_host_command = f"docker cp {container_id}:{filestore_backup_path} {filestore_backup_path}"
+    execute_host_command(copy_backup_file_to_host_command)
+
+
+def execute_backup_filestore_normal(ssh, **kwargs):
+    pass
+
+
 def backup_filestore():
+    # fixme:
     odoo_server_config_file = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/odoo-server.json"
+    odoo_db_config_file = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/odoo-db.json"
+    # fixme above
     server_config = get_server_config(odoo_server_config_file)
-    execute_backup_filestore(**server_config)
-    
-
-
+    db_config = get_db_config(odoo_db_config_file)
+    config = {**server_config, **db_config}
+    ssh = connect_server(**server_config)
+    execute_backup_filestore(ssh, **config)
+    ssh.close()
 
 
 def upload_file(file_name, bucket, object_name=None):
@@ -149,10 +175,11 @@ def upload_file(file_name, bucket, object_name=None):
         return False
     return True
 
+
 def main():
     populate_variable()
     # backup_db()
     backup_filestore()
-    
-    
+
+
 main()
