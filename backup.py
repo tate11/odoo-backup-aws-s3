@@ -31,28 +31,15 @@ def populate_variable():
 
 def get_db_config(config_file):
     with open(config_file, 'r') as f:
-        data = json.load(f)
-    host = data.get('host', 'localhost')
-    port = str(data.get('port', 5432))
-    user = data.get('user', 'odoo')
-    password = data.get('password', 'odoo')
-    db_name = data.get('db_name', 'odoo')
-
-    return dict(
-        host=host,
-        port=port,
-        user=user,
-        password=password,
-        db_name=db_name,
-        db_backup_file_path=db_backup_file_path
-    )
+        config = json.load(f)
+    return config
 
 
 def execute_backup_db(**kwargs):
-    host = kwargs.get('host')
-    user = kwargs.get('user')
-    password = kwargs.get('password')
-    port = kwargs.get('port')
+    host = kwargs.get('db_host')
+    user = kwargs.get('db_user')
+    password = kwargs.get('db_password')
+    port = kwargs.get('db_port')
     db_name = kwargs.get('db_name')
     db_backup_file_path = kwargs.get('db_backup_file_path')
 
@@ -66,6 +53,7 @@ def execute_backup_db(**kwargs):
 
 def backup_db():
     db_config = get_db_config(odoo_db_config_file)
+    db_config['db_backup_file_path'] = db_backup_file_path
     execute_backup_db(**db_config)
 
 
@@ -113,9 +101,6 @@ def execute_backup_filestore_docker(ssh, **kwargs):
         stdin, stdout, stderr = ssh.exec_command(command)
         return stdout.read().decode()
 
-    def execute_container_command(command):
-        return execute_host_command(f"docker exec {container_id} sh -c '{command}'")
-
     def get_odoo_container_id():
         odoo_docker_image = kwargs.get('odoo_docker_image')
         command = "docker ps -q -a | xargs docker inspect --format '{{.Id}} {{.Config.Image}}' | awk -v img=\"%s\" '$2 == img {print $1}'" % odoo_docker_image
@@ -129,11 +114,17 @@ def execute_backup_filestore_docker(ssh, **kwargs):
     filestore_backup_name = f"{db_name}.tar.gz"
     filestore_backup_path = f"/tmp/{filestore_backup_name}"
     backup_command = f'docker exec {container_id} sh -c "tar czf {filestore_backup_path} {filestore_path}"'
-    res = execute_container_command(backup_command)
-    print(res)
+    execute_host_command(backup_command)
 
     copy_backup_file_to_host_command = f"docker cp {container_id}:{filestore_backup_path} {filestore_backup_path}"
     execute_host_command(copy_backup_file_to_host_command)
+
+    sftp_client = ssh.open_sftp()
+    local_filestore_backup_path = filestore_backup_path
+    sftp_client.get(remotepath=filestore_backup_path, localpath=local_filestore_backup_path)
+    execute_host_command(f'rm -rf {filestore_backup_path}')
+
+    return local_filestore_backup_path
 
 
 def execute_backup_filestore_normal(ssh, **kwargs):
