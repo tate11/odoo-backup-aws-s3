@@ -23,7 +23,6 @@ def notify_error_and_stop_script(error):
 
 def get_common_config():
     s3_storage_class = "STANDARD_IA"
-    s3_bucket_name = "odoo-live-backup"
     secret_path = os.environ.get('SECRET_PATH', '')
     db_config_file = os.path.join(secret_path, 'odoo-db.json')
     server_config_file = os.path.join(secret_path, 'odoo-server.json')
@@ -49,7 +48,6 @@ def get_common_config():
         local_db_backup_file_path=local_db_backup_file_path,
         local_filestore_backup_file_path=local_filestore_backup_file_path,
         s3_storage_class=s3_storage_class,
-        s3_bucket_name=s3_bucket_name,
     )
 
 
@@ -200,8 +198,8 @@ def compress_backup_files():
 # ============================= AWS S3 ===============================
 def get_bucket_name(s3_client, **kwargs):
     server_host = kwargs.get('server_host')
-    server_host = server_host.replace('.', '_')
-    s3_bucket_name = f'server_{server_host}_odoo_backup'
+    server_host = server_host.replace('.', '-')
+    s3_bucket_name = f'server-{server_host}-odoo-backup'
     try:
         s3_client.head_bucket(Bucket=s3_bucket_name)
     except ClientError as e:
@@ -229,6 +227,8 @@ def get_list_files(s3_client, bucket_name):
 
 
 def delete_old_files(s3_client, list_files, bucket_name):
+    if not list_files:
+        return False
     # delete file older than 7 days
     old_files = []
     current_datetime = datetime.now(timezone.utc)
@@ -247,7 +247,7 @@ def delete_old_files(s3_client, list_files, bucket_name):
 
     try:
         delete_file_objects = [{'Key': f} for f in old_files]
-        response = s3_client.delete_objects(
+        s3_client.delete_objects(
             Bucket=bucket_name,
             Delete={
                 'Objects': delete_file_objects,
@@ -258,11 +258,12 @@ def delete_old_files(s3_client, list_files, bucket_name):
         logging.error(f"Delete object error: {e}")
 
 
-def upload_file(s3_client, file_name, bucket, object_name=None):
+def upload_file(s3_client, file_name, bucket, **kwargs):
     # If S3 object_name was not specified, use file_name
-    object_name = object_name or file_name
+    s3_storage_class = kwargs.get('s3_storage_class')
+    object_name = os.path.basename(file_name)
     try:
-        s3_client.upload_file(file_name, bucket, object_name)
+        s3_client.upload_file(file_name, bucket, object_name, ExtraArgs={'StorageClass': s3_storage_class})
         # todo: notify backup success
     except ClientError as e:
         logging.error(e)
@@ -276,7 +277,7 @@ def backup_file_on_s3(backup_file):
     s3_bucket_name = get_bucket_name(s3_client, **config)
     list_files = get_list_files(s3_client, s3_bucket_name)
     delete_old_files(s3_client, list_files, s3_bucket_name)
-    upload_file(s3_client, backup_file, s3_bucket_name)
+    upload_file(s3_client, backup_file, s3_bucket_name, **config)
 
 
 def main():
