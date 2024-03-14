@@ -125,12 +125,12 @@ def execute_backup_filestore_docker(ssh, **kwargs):
 
     db_name = kwargs.get('db_name')
     docker_datadir_path = kwargs.get('datadir_path')
-    docker_filestore_path = os.path.join(docker_datadir_path, 'filestore', db_name)
+    docker_filestore_path = os.path.join(docker_datadir_path, 'filestore')
     container_id = get_odoo_container_id()
 
     docker_filestore_backup_name = f"{db_name}.tar.gz"
     docker_filestore_backup_path = f"/tmp/{docker_filestore_backup_name}"
-    backup_command = f'docker exec {container_id} sh -c "tar cf {docker_filestore_backup_path} {docker_filestore_path}"'
+    backup_command = f'docker exec {container_id} sh -c "cd {docker_filestore_path} && tar cf {docker_filestore_backup_path} {db_name}"'
     execute_host_command(backup_command)
 
     host_filestore_backup_path = f"/tmp/{db_name}.tar.gz"
@@ -151,11 +151,11 @@ def execute_backup_filestore_normal(ssh, **kwargs):
 
     db_name = kwargs.get('db_name')
     datadir_path = kwargs.get('datadir_path')
-    filestore_path = os.path.join(datadir_path, 'filestore', db_name)
+    filestore_path = os.path.join(datadir_path, 'filestore')
 
     filestore_backup_name = f"{db_name}.tar.gz"
     filestore_backup_path = f"/tmp/{filestore_backup_name}"
-    backup_command = f'tar czf {filestore_backup_path} {filestore_path}'
+    backup_command = f'cd {filestore_path} && tar czf {filestore_backup_path} {db_name}'
     execute_host_command(backup_command)
 
     sftp_client = ssh.open_sftp()
