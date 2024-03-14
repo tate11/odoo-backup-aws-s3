@@ -1,12 +1,15 @@
 # -*- coding:utf-8 -*-
 
+import boto3
+from botocore.exceptions import ClientError
+from datetime import datetime, timezone
 import logging
 import json
-import boto3
 import subprocess
-from botocore.exceptions import ClientError
 import os
 import paramiko
+
+DATE_FORMAT = '%Y-%m-%d_%H-%M-%S'
 
 
 def notify_error_and_stop_script(error):
@@ -23,8 +26,11 @@ def get_common_config():
     server_config_file = os.path.join(secret_path, 'odoo-server.json')
     local_backup_folder = '/tmp/odoo-backup'
     subprocess.run(f'mkdir -p {local_backup_folder}', shell=True)
-    local_db_backup_file_path = os.path.join(local_backup_folder, 'backup.sql')
-    local_filestore_backup_file_path = os.path.join(local_backup_folder, 'filestore.tar.gz')
+
+    local_db_backup_file_name = 'backup.sql'
+    local_filestore_backup_file_name = 'filestore.tar.gz'
+    local_db_backup_file_path = os.path.join(local_backup_folder, local_db_backup_file_name)
+    local_filestore_backup_file_path = os.path.join(local_backup_folder, local_filestore_backup_file_name)
     # fixme
     db_config_file = '/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/odoo-db.json'
     server_config_file = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/odoo-server.json"
@@ -34,6 +40,8 @@ def get_common_config():
         secret_path=secret_path,
         db_config_file=db_config_file,
         server_config_file=server_config_file,
+        local_db_backup_file_name=local_db_backup_file_name,
+        local_filestore_backup_file_name=local_filestore_backup_file_name,
         local_backup_folder=local_backup_folder,
         local_db_backup_file_path=local_db_backup_file_path,
         local_filestore_backup_file_path=local_filestore_backup_file_path,
@@ -171,6 +179,19 @@ def backup_filestore():
     ssh.close()
 
 
+def compress_backup_files():
+    config = get_server_config()
+    db_config = get_db_config()
+    local_db_backup_file_name = config['local_db_backup_file_name']
+    local_filestore_backup_file_name = config['local_filestore_backup_file_name']
+    local_backup_folder = config['local_backup_folder']
+    local_backup_file_name = f"{datetime.now(timezone.utc).strftime(DATE_FORMAT)}_{config['db_name']}.tar.gz"
+    subprocess.run(
+        f'cd {local_backup_folder} && tar -cf {local_backup_file_name} {local_db_backup_file_name} {local_filestore_backup_file_name}')
+
+    return os.path.join(local_backup_folder, local_backup_file_name)
+
+
 def upload_file(file_name, bucket, object_name=None):
     """Upload a file to an S3 bucket
 
@@ -195,9 +216,9 @@ def upload_file(file_name, bucket, object_name=None):
 
 
 def main():
-    get_common_config()
-    # backup_db()
+    backup_db()
     backup_filestore()
+    backup_file = compress_backup_files()
 
 
 main()
