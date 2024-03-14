@@ -181,16 +181,20 @@ def backup_filestore():
 
 def compress_backup_files():
     config = get_server_config()
-    db_config = get_db_config()
     local_db_backup_file_name = config['local_db_backup_file_name']
     local_filestore_backup_file_name = config['local_filestore_backup_file_name']
     local_backup_folder = config['local_backup_folder']
-    local_backup_file_name = f"{datetime.now(timezone.utc).strftime(DATE_FORMAT)}_{config['db_name']}.tar.gz"
+    local_backup_file_name = f"{config['db_name']}_{datetime.now(timezone.utc).strftime(DATE_FORMAT)}.tar.gz"
     subprocess.run(
-        f'cd {local_backup_folder} && tar -cf {local_backup_file_name} {local_db_backup_file_name} {local_filestore_backup_file_name}')
+        f'cd {local_backup_folder} && tar -cf "{local_backup_file_name}" {local_db_backup_file_name} {local_filestore_backup_file_name}',
+        shell=True)
 
     return os.path.join(local_backup_folder, local_backup_file_name)
 
+# ============================= AWS S3 ===============================
+
+def get_list_files(bucket):
+    pass
 
 def upload_file(file_name, bucket, object_name=None):
     """Upload a file to an S3 bucket
@@ -219,6 +223,7 @@ def main():
     backup_db()
     backup_filestore()
     backup_file = compress_backup_files()
+    print(backup_file)
 
 
 main()
