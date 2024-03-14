@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+import re
 
 import boto3
 from botocore.exceptions import ClientError
@@ -21,6 +22,8 @@ def notify_error_and_stop_script(error):
 
 
 def get_common_config():
+    s3_storage_class = "STANDARD_IA"
+    s3_bucket_name = "odoo-live-backup"
     secret_path = os.environ.get('SECRET_PATH', '')
     db_config_file = os.path.join(secret_path, 'odoo-db.json')
     server_config_file = os.path.join(secret_path, 'odoo-server.json')
@@ -45,6 +48,8 @@ def get_common_config():
         local_backup_folder=local_backup_folder,
         local_db_backup_file_path=local_db_backup_file_path,
         local_filestore_backup_file_path=local_filestore_backup_file_path,
+        s3_storage_class=s3_storage_class,
+        s3_bucket_name=s3_bucket_name,
     )
 
 
@@ -78,7 +83,7 @@ def backup_db():
     execute_backup_db(**db_config)
 
 
-# =============== filestore =================
+# =============== Backup filestore =================
 
 def get_server_config():
     common_config = get_common_config()
@@ -191,39 +196,95 @@ def compress_backup_files():
 
     return os.path.join(local_backup_folder, local_backup_file_name)
 
+
 # ============================= AWS S3 ===============================
-
-def get_list_files(bucket):
-    pass
-
-def upload_file(file_name, bucket, object_name=None):
-    """Upload a file to an S3 bucket
-
-    :param file_name: File to upload
-    :param bucket: Bucket to upload to
-    :param object_name: S3 object name. If not specified then file_name is used
-    :return: True if file was uploaded, else False
-    """
-
-    # If S3 object_name was not specified, use file_name
-    if object_name is None:
-        object_name = file_name
-
-    # Upload the file
-    s3_client = boto3.client('s3')
+def get_bucket_name(s3_client, **kwargs):
+    server_host = kwargs.get('server_host')
+    server_host = server_host.replace('.', '_')
+    s3_bucket_name = f'server_{server_host}_odoo_backup'
     try:
-        response = s3_client.upload_file(file_name, bucket, object_name)
+        s3_client.head_bucket(Bucket=s3_bucket_name)
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == '404':  # Bucket not found (doesn't exist)
+            # Create the bucket since it doesn't exist
+            s3_client.create_bucket(Bucket=s3_bucket_name)
+            logging.info(f"Bucket '{s3_bucket_name}' created successfully!")
+        else:
+            notify_error_and_stop_script(f"An unexpected error occurred: {e}")
+    return s3_bucket_name
+
+
+def get_list_files(s3_client, bucket_name):
+    try:
+        response = s3_client.list_objects_v2(Bucket=bucket_name)
+        # Check if objects exist in the bucket
+        if 'Contents' in response:
+            # Extract object names (keys) from the response
+            object_names = [obj['Key'] for obj in response['Contents']]
+            return object_names
+    except ClientError as e:
+        pass
+    return False
+
+
+def delete_old_files(s3_client, list_files, bucket_name):
+    # delete file older than 7 days
+    old_files = []
+    current_datetime = datetime.now(timezone.utc)
+    for file_name in list_files:
+        # 2024-03-14_06-37-21
+        date_str = re.search(r'\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}', file_name)
+        if not date_str:
+            continue
+        # add offset aware to compare with utc datetime
+        date_str = f"{date_str[0]} +0000"
+        file_datetime = datetime.strptime(date_str, DATE_FORMAT + ' %z')
+        if (current_datetime - file_datetime).days > 7:
+            old_files.append(file_name)
+    if not old_files:
+        return True
+
+    try:
+        delete_file_objects = [{'Key': f} for f in old_files]
+        response = s3_client.delete_objects(
+            Bucket=bucket_name,
+            Delete={
+                'Objects': delete_file_objects,
+                'Quiet': True
+            }
+        )
+    except ClientError as e:
+        logging.error(f"Delete object error: {e}")
+
+
+def upload_file(s3_client, file_name, bucket, object_name=None):
+    # If S3 object_name was not specified, use file_name
+    object_name = object_name or file_name
+    try:
+        s3_client.upload_file(file_name, bucket, object_name)
+        # todo: notify backup success
     except ClientError as e:
         logging.error(e)
         return False
     return True
 
 
+def backup_file_on_s3(backup_file):
+    config = get_server_config()
+    s3_client = boto3.client('s3')
+    s3_bucket_name = get_bucket_name(s3_client, **config)
+    list_files = get_list_files(s3_client, s3_bucket_name)
+    delete_old_files(s3_client, list_files, s3_bucket_name)
+    upload_file(s3_client, backup_file, s3_bucket_name)
+
+
 def main():
-    backup_db()
-    backup_filestore()
-    backup_file = compress_backup_files()
-    print(backup_file)
+    # backup_db()
+    # backup_filestore()
+    # backup_file = compress_backup_files()
+    backup_file = "/tmp/odoo-backup/cl-1303_2024-03-14_06-37-21.tar.gz"
+    backup_file_on_s3(backup_file)
 
 
 main()
