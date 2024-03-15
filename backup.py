@@ -16,7 +16,7 @@ DATE_FORMAT = '%Y-%m-%d_%H-%M-%S'
 
 
 async def send_telegram_message(message):
-    config = get_server_config()
+    config = get_config()
     server_host = config['server_host']
     message = f"""
 Backup on server {server_host}:
@@ -60,8 +60,6 @@ def get_common_config():
     )
 
 
-# ================= Backup Database =================
-
 def get_db_config():
     common_config = get_common_config()
     db_config_file = common_config.get('db_config_file')
@@ -70,29 +68,7 @@ def get_db_config():
         return {**common_config, **config}
 
 
-def execute_backup_db(**kwargs):
-    host = kwargs.get('db_host')
-    user = kwargs.get('db_user')
-    password = kwargs.get('db_password')
-    port = kwargs.get('db_port')
-    db_name = kwargs.get('db_name')
-    local_db_backup_file_path = kwargs.get('local_db_backup_file_path')
-
-    command = f"export PGPASSWORD={password} && pg_dump -h {host} -p {port} -U {user} --no-owner --format=c {db_name} > {local_db_backup_file_path}"
-    process = subprocess.run(command, shell=True, capture_output=True)
-    if process.returncode != 0:
-        logging.error(f"Error backing up database: {process.stderr}")
-        notify_error_and_stop_script(process.stderr)
-
-
-def backup_db():
-    db_config = get_db_config()
-    execute_backup_db(**db_config)
-
-
-# =============== Backup filestore =================
-
-def get_server_config():
+def get_config():
     common_config = get_common_config()
     db_config = get_db_config()
     server_config_file = common_config.get('server_config_file')
@@ -122,6 +98,80 @@ def connect_server(**kwargs):
         notify_error_and_stop_script("Authentication failed! - can't connect to Odoo server")
 
 
+def execute_server_command(ssh, command):
+    stdin, stdout, stderr = ssh.exec_command(command)
+    return stdout.read().decode()
+
+
+def get_odoo_container_id(ssh, **kwargs):
+    odoo_docker_image = kwargs.get('odoo_docker_image')
+    command = "docker ps -q -a | xargs docker inspect --format '{{.Id}} {{.Config.Image}}' | awk -v img=\"%s\" '$2 == img {print $1}'" % odoo_docker_image
+    return execute_server_command(ssh, command).strip()
+
+
+# ================= Backup Database =================
+def execute_backup_db(ssh, **kwargs):
+    odoo_docker_image = kwargs.get('odoo_docker_image')
+    if odoo_docker_image:
+        execute_backup_db_docker(ssh, **kwargs)
+    else:
+        execute_backup_db_normal(ssh, **kwargs)
+
+
+def execute_backup_db_normal(ssh, **kwargs):
+    host = kwargs.get('db_host')
+    user = kwargs.get('db_user')
+    password = kwargs.get('db_password')
+    port = kwargs.get('db_port')
+    db_name = kwargs.get('db_name')
+    local_db_backup_file_path = kwargs.get('local_db_backup_file_path')
+    server_db_backup_file_path = f'/tmp/{db_name}_${datetime.now().timestamp()}'
+
+    try:
+        command = f"export PGPASSWORD={password} && pg_dump -h {host} -p {port} -U {user} --no-owner --format=c {db_name} > {server_db_backup_file_path}"
+        execute_server_command(ssh, command)
+        sftp_client = ssh.open_sftp()
+        sftp_client.get(remotepath=server_db_backup_file_path, localpath=local_db_backup_file_path)
+        execute_server_command(ssh, f"rm -rf {server_db_backup_file_path}")
+        sftp_client.close()
+    except Exception as e:
+        notify_error_and_stop_script(e)
+
+
+def execute_backup_db_docker(ssh, **kwargs):
+    host = kwargs.get('db_host')
+    user = kwargs.get('db_user')
+    password = kwargs.get('db_password')
+    port = kwargs.get('db_port')
+    db_name = kwargs.get('db_name')
+    local_db_backup_file_path = kwargs.get('local_db_backup_file_path')
+    server_db_backup_file_path = f'/tmp/{db_name}_{datetime.now().timestamp()}.sql'
+
+    try:
+        container_id = get_odoo_container_id(ssh, **kwargs)
+        command = f"export PGPASSWORD={password} && pg_dump -h {host} -p {port} -U {user} --no-owner --format=c {db_name} > {server_db_backup_file_path}"
+        docker_command = f'docker exec {container_id} sh -c "{command}"'
+        execute_server_command(ssh, docker_command)
+        execute_server_command(ssh,
+                               f"docker cp {container_id}:{server_db_backup_file_path} {server_db_backup_file_path}")
+
+        sftp_client = ssh.open_sftp()
+        sftp_client.get(remotepath=server_db_backup_file_path, localpath=local_db_backup_file_path)
+        execute_server_command(ssh, f"rm -rf {server_db_backup_file_path}")
+        execute_server_command(ssh, f'docker exec {container_id} sh -c "rm -rf {server_db_backup_file_path}"')
+        sftp_client.close()
+    except Exception as e:
+        notify_error_and_stop_script(e)
+
+
+def backup_db():
+    config = get_config()
+    ssh_client = connect_server(**config)
+    execute_backup_db(ssh_client, **config)
+    ssh_client.close()
+
+
+# =============== Backup filestore =================
 def execute_backup_filestore(ssh, **kwargs):
     odoo_docker_image = kwargs.get('odoo_docker_image')
     if odoo_docker_image:
@@ -159,6 +209,7 @@ def execute_backup_filestore_docker(ssh, **kwargs):
     sftp_client.get(remotepath=host_filestore_backup_path, localpath=local_filestore_backup_file_path)
     execute_host_command(f'rm -rf {host_filestore_backup_path}')
     execute_host_command(f'docker exec {container_id} sh -c "rm -rf {docker_filestore_backup_path}"')
+    sftp_client.close()
 
 
 def execute_backup_filestore_normal(ssh, **kwargs):
@@ -179,17 +230,18 @@ def execute_backup_filestore_normal(ssh, **kwargs):
     local_filestore_backup_file_path = kwargs.get('local_filestore_backup_file_path')
     sftp_client.get(remotepath=filestore_backup_path, localpath=local_filestore_backup_file_path)
     execute_host_command(f'rm -rf {filestore_backup_path}')
+    sftp_client.close()
 
 
 def backup_filestore():
-    server_config = get_server_config()
+    server_config = get_config()
     ssh = connect_server(**server_config)
     execute_backup_filestore(ssh, **server_config)
     ssh.close()
 
 
 def compress_backup_files():
-    config = get_server_config()
+    config = get_config()
     local_db_backup_file_name = config['local_db_backup_file_name']
     local_filestore_backup_file_name = config['local_filestore_backup_file_name']
     local_backup_folder = config['local_backup_folder']
@@ -264,14 +316,14 @@ def upload_file(s3_client, file_name, bucket, **kwargs):
     object_name = os.path.basename(file_name)
     try:
         s3_client.upload_file(file_name, bucket, object_name, ExtraArgs={'StorageClass': s3_storage_class})
-        asyncio.run(send_telegram_message(f'Backup success a file named {file_name}'))
+        asyncio.run(send_telegram_message(f'🎉🎉🎉 Backup success a file named {file_name}'))
     except ClientError as e:
         notify_error_and_stop_script(f'AWS S3: Upload backup file failed with error: {e}')
     return True
 
 
 def backup_file_on_s3(backup_file):
-    config = get_server_config()
+    config = get_config()
     s3_client = boto3.client('s3')
     s3_bucket_name = get_bucket_name(s3_client, **config)
     list_files = get_list_files(s3_client, s3_bucket_name)
