@@ -1,50 +1,47 @@
 # About
-Backup Odoo database and filestore to S3 AWS
+This script is designed to backup Odoo databases and filestores to AWS S3.
 
-##  Instruction
-1. Create a secret folder contain following files
+## Instructions
+1. Create a secret folder containing the following files:
 
-- **_db.json_**
-```json
-{
-    "db_host": "localhost",
-    "db_user": "odoo",
-    "db_password": "odoo",
-    "db_port": 5432,
-    "db_name": "odoo database name"
-}
+   - **_db.json_**
+     ```json
+     {
+         "db_host": "localhost",
+         "db_user": "odoo",
+         "db_password": "odoo",
+         "db_port": 5432,
+         "db_name": "odoo_database_name"
+     }
+     ```
 
-```
-- **_server.json_**
-```json
-{
-  "server_host": "12.34.56.78",
-  "server_user": "root",
-  "server_port": 22,
-  "key_file": "private-key.pem",
-  "datadir_path": "datadir folder path",
-  "odoo_docker_image": "if your odoo server running on host, ignore this parameter",
-  "telegram_token": "telegram bot token to send notify",
-  "telegram_channel": "telegram channel id "
-}
+   - **_server.json_**
+     ```json
+     {
+       "server_host": "12.34.56.78",
+       "server_user": "root",
+       "server_port": 22,
+       "key_file": "private-key.pem - private key file to ssh to server - add the key file with the same name to the secret folder",
+       "datadir_path": "datadir_folder_path",
+       "odoo_docker_image": "if your Odoo server is running on host, ignore this parameter",
+       "telegram_token": "telegram_bot_token_to_send_notifications",
+       "telegram_channel": "telegram_channel_id"
+     }
+     ```
 
-```
-- **_credentials_**
-```editorconfig
-[default]
-aws_access_key_id = YOUR_ACCESS_KEY
-aws_secret_access_key = YOUR_SECRET_KEY
-```
-- _**config**_
-```editorconfig
-[default]
-region=us-east-1
-```
-1. Run command
-```shell
-docker run -d  xmars/odoo-backup-aws-s3 -v <secret_folder>:/root/.aws
-```
+   - **_credentials_**
+     ```
+     [default]
+     aws_access_key_id = YOUR_ACCESS_KEY
+     aws_secret_access_key = YOUR_SECRET_KEY
+     ```
 
-# Reference
-- [AWS S3 credentials](https://boto3.amazonaws.com/v1/documentation/api/1.16.53/guide/quickstart.html#configuration) 
-- [AWS S3 boto3](https://boto3.amazonaws.com/v1/documentation/api/1.16.53/reference/services/s3.html#id224)
+   - **_config_**
+     ```
+     [default]
+     region=us-east-1
+     ```
+
+2. Run the command:
+   ```shell
+   docker run -d xmars/odoo-backup-aws-s3 -v <secret_folder_path>:/root/.aws
