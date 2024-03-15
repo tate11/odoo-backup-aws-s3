@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
-import re
 
+import asyncio
 import boto3
 from botocore.exceptions import ClientError
 from datetime import datetime, timezone
@@ -9,21 +9,34 @@ import json
 import subprocess
 import os
 import paramiko
+import telegram
+import re
 
 DATE_FORMAT = '%Y-%m-%d_%H-%M-%S'
 
 
+async def send_telegram_message(message):
+    config = get_server_config()
+    server_host = config['server_host']
+    message = f"""
+Backup on server {server_host}:
+{message}
+    """
+    telegram_token = config['telegram_token']
+    telegram_channel = config['telegram_channel']
+    bot = telegram.Bot(token=telegram_token)
+    await bot.send_message(chat_id=telegram_channel, text=message)
+
+
 def notify_error_and_stop_script(error):
-    # todo: 
-    # - write error to log file
-    # - send telegram message here to notify error
-    print(error)
+    message = f"🐞ERROR🐞: {error}"
+    asyncio.run(send_telegram_message(message))
     exit()
 
 
 def get_common_config():
     s3_storage_class = "STANDARD_IA"
-    secret_path = os.environ.get('SECRET_PATH', '')
+    secret_path = os.environ.get('BACKUP_SECRET_PATH', '~/.aws')
     db_config_file = os.path.join(secret_path, 'odoo-db.json')
     server_config_file = os.path.join(secret_path, 'odoo-server.json')
     local_backup_folder = '/tmp/odoo-backup'
@@ -33,11 +46,7 @@ def get_common_config():
     local_filestore_backup_file_name = 'filestore.tar.gz'
     local_db_backup_file_path = os.path.join(local_backup_folder, local_db_backup_file_name)
     local_filestore_backup_file_path = os.path.join(local_backup_folder, local_filestore_backup_file_name)
-    # fixme
-    db_config_file = '/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/odoo-db.json'
-    server_config_file = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/odoo-server.json"
-    # server_config_file = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/internal-aws.json"
-    # fixme
+
     return dict(
         secret_path=secret_path,
         db_config_file=db_config_file,
@@ -48,6 +57,7 @@ def get_common_config():
         local_db_backup_file_path=local_db_backup_file_path,
         local_filestore_backup_file_path=local_filestore_backup_file_path,
         s3_storage_class=s3_storage_class,
+
     )
 
 
@@ -55,7 +65,9 @@ def get_common_config():
 
 def get_db_config():
     common_config = get_common_config()
+    # fixme
     db_config_file = common_config.get('db_config_file')
+    db_config_file = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/odoo-db.json"
     with open(db_config_file, 'r') as f:
         config = json.load(f)
         return {**common_config, **config}
@@ -86,7 +98,9 @@ def backup_db():
 def get_server_config():
     common_config = get_common_config()
     db_config = get_db_config()
+    # fixme:
     server_config_file = common_config.get('server_config_file')
+    server_config_file = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/odoo-server.json"
     with open(server_config_file, 'r') as f:
         config = json.load(f)
     key_file = config.get('key_file')
@@ -103,9 +117,6 @@ def connect_server(**kwargs):
     user = kwargs.get('server_user')
     port = kwargs.get('server_port')
     key_file_path = kwargs.get('key_file_path')
-    # fixme
-    key_file_path = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/cuulong16g_key.pem"
-    # key_file_path = "/home/xmars/Downloads/vdx-internal.pem"
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
@@ -113,7 +124,7 @@ def connect_server(**kwargs):
         ssh.connect(hostname=host, username=user, port=port, pkey=key)
         return ssh
     except paramiko.AuthenticationException:
-        notify_error_and_stop_script("Authentication failed!")
+        notify_error_and_stop_script("Authentication failed! - can't connect to Odoo server")
 
 
 def execute_backup_filestore(ssh, **kwargs):
@@ -209,7 +220,7 @@ def get_bucket_name(s3_client, **kwargs):
             s3_client.create_bucket(Bucket=s3_bucket_name)
             logging.info(f"Bucket '{s3_bucket_name}' created successfully!")
         else:
-            notify_error_and_stop_script(f"An unexpected error occurred: {e}")
+            notify_error_and_stop_script(f"AWS S3: An unexpected error occurred: {e}")
     return s3_bucket_name
 
 
@@ -259,15 +270,13 @@ def delete_old_files(s3_client, list_files, bucket_name):
 
 
 def upload_file(s3_client, file_name, bucket, **kwargs):
-    # If S3 object_name was not specified, use file_name
     s3_storage_class = kwargs.get('s3_storage_class')
     object_name = os.path.basename(file_name)
     try:
         s3_client.upload_file(file_name, bucket, object_name, ExtraArgs={'StorageClass': s3_storage_class})
-        # todo: notify backup success
+
     except ClientError as e:
-        logging.error(e)
-        return False
+        notify_error_and_stop_script(f'AWS S3: Upload backup file failed with error: {e}')
     return True
 
 
@@ -285,7 +294,8 @@ def main():
     # backup_filestore()
     # backup_file = compress_backup_files()
     backup_file = "/tmp/odoo-backup/cl-1303_2024-03-14_06-37-21.tar.gz"
-    backup_file_on_s3(backup_file)
+    # backup_file_on_s3(backup_file)
+    notify_error_and_stop_script('well we? welll')
 
 
 main()
