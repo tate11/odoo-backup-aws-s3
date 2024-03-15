@@ -327,6 +327,7 @@ def delete_local_file(file_name):
 
 
 def main():
+    print(f"=========== Backup: {datetime.now(timezone.utc)} ==================")
     backup_db()
     backup_filestore()
     backup_file = compress_backup_files()
