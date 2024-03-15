@@ -125,7 +125,7 @@ def execute_backup_db_normal(ssh, **kwargs):
     port = kwargs.get('db_port')
     db_name = kwargs.get('db_name')
     local_db_backup_file_path = kwargs.get('local_db_backup_file_path')
-    server_db_backup_file_path = f'/tmp/{db_name}_${datetime.now().timestamp()}'
+    server_db_backup_file_path = f'/tmp/{db_name}_{datetime.now().timestamp()}'
 
     try:
         command = f"export PGPASSWORD={password} && pg_dump -h {host} -p {port} -U {user} --no-owner --format=c {db_name} > {server_db_backup_file_path}"
@@ -181,42 +181,29 @@ def execute_backup_filestore(ssh, **kwargs):
 
 
 def execute_backup_filestore_docker(ssh, **kwargs):
-    def execute_host_command(command):
-        stdin, stdout, stderr = ssh.exec_command(command)
-        return stdout.read().decode()
-
-    def get_odoo_container_id():
-        odoo_docker_image = kwargs.get('odoo_docker_image')
-        command = "docker ps -q -a | xargs docker inspect --format '{{.Id}} {{.Config.Image}}' | awk -v img=\"%s\" '$2 == img {print $1}'" % odoo_docker_image
-        return execute_host_command(command).strip()
-
     db_name = kwargs.get('db_name')
     docker_datadir_path = kwargs.get('datadir_path')
     docker_filestore_path = os.path.join(docker_datadir_path, 'filestore')
-    container_id = get_odoo_container_id()
+    container_id = get_odoo_container_id(ssh, **kwargs)
 
     docker_filestore_backup_name = f"{db_name}.tar.gz"
     docker_filestore_backup_path = f"/tmp/{docker_filestore_backup_name}"
     backup_command = f'docker exec {container_id} sh -c "cd {docker_filestore_path} && tar cf {docker_filestore_backup_path} {db_name}"'
-    execute_host_command(backup_command)
+    execute_server_command(ssh, backup_command)
 
     host_filestore_backup_path = f"/tmp/{db_name}.tar.gz"
     copy_backup_file_to_host_command = f"docker cp {container_id}:{docker_filestore_backup_path} {host_filestore_backup_path}"
-    execute_host_command(copy_backup_file_to_host_command)
+    execute_server_command(ssh, copy_backup_file_to_host_command)
 
     sftp_client = ssh.open_sftp()
     local_filestore_backup_file_path = kwargs.get('local_filestore_backup_file_path')
     sftp_client.get(remotepath=host_filestore_backup_path, localpath=local_filestore_backup_file_path)
-    execute_host_command(f'rm -rf {host_filestore_backup_path}')
-    execute_host_command(f'docker exec {container_id} sh -c "rm -rf {docker_filestore_backup_path}"')
+    execute_server_command(ssh, f'rm -rf {host_filestore_backup_path}')
+    execute_server_command(ssh, f'docker exec {container_id} sh -c "rm -rf {docker_filestore_backup_path}"')
     sftp_client.close()
 
 
 def execute_backup_filestore_normal(ssh, **kwargs):
-    def execute_host_command(command):
-        stdin, stdout, stderr = ssh.exec_command(command)
-        return stdout.read().decode()
-
     db_name = kwargs.get('db_name')
     datadir_path = kwargs.get('datadir_path')
     filestore_path = os.path.join(datadir_path, 'filestore')
@@ -224,12 +211,12 @@ def execute_backup_filestore_normal(ssh, **kwargs):
     filestore_backup_name = f"{db_name}.tar.gz"
     filestore_backup_path = f"/tmp/{filestore_backup_name}"
     backup_command = f'cd {filestore_path} && tar czf {filestore_backup_path} {db_name}'
-    execute_host_command(backup_command)
+    execute_server_command(ssh, backup_command)
 
     sftp_client = ssh.open_sftp()
     local_filestore_backup_file_path = kwargs.get('local_filestore_backup_file_path')
     sftp_client.get(remotepath=filestore_backup_path, localpath=local_filestore_backup_file_path)
-    execute_host_command(f'rm -rf {filestore_backup_path}')
+    execute_server_command(ssh, f'rm -rf {filestore_backup_path}')
     sftp_client.close()
 
 
