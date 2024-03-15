@@ -13,6 +13,8 @@ COPY ./backup.py /
 COPY /cronjob.setup /
 
 ENV BACKUP_SECRET_PATH /root/.aws
+ENV AWS_SHARED_CREDENTIALS_FILE /root/.aws/credentials
+ENV AWS_CONFIG_FILE /root/.aws/config
 
 RUN crontab /cronjob.setup
 

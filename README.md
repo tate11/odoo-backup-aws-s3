@@ -50,5 +50,5 @@ This script is designed to backup Odoo databases and filestores to AWS S3.
     ```shell
     python3 -m venv venv
     source venv/bin/activate && pip install -r requirements.txt 
-    BACKUP_SECRET_PATH=<secret_folder_path> python3 backup.py
+    BACKUP_SECRET_PATH=<secret_folder_path> AWS_SHARED_CREDENTIALS_FILE=<secret_folder_path>/credentials AWS_CONFIG_FILE=<secret_folder_path>/config python3 backup.py
     ```
