@@ -42,6 +42,13 @@ This script is designed to backup Odoo databases and filestores to AWS S3.
      region=us-east-1
      ```
 
-2. Run the command:
+2. Run the docker command, this will create a container with a cronjob run everyday, at 00:00
    ```shell
    docker run -d xmars/odoo-backup-aws-s3 -v <secret_folder_path>:/root/.aws
+
+3. If you want to run *backup.py* script directly, use this command
+    ```shell
+    python3 -m venv venv
+    source venv/bin/activate && pip install -r requirements.txt 
+    BACKUP_SECRET_PATH=<secret_folder_path> python3 backup.py
+    ```
