@@ -100,6 +100,9 @@ def connect_server(**kwargs):
 
 def execute_server_command(ssh, command):
     stdin, stdout, stderr = ssh.exec_command(command)
+    error_message = stderr and stderr.read().decode()
+    if error_message:
+        notify_error_and_stop_script(error_message)
     return stdout.read().decode()
 
 
@@ -295,7 +298,7 @@ def delete_old_files(s3_client, list_files, bucket_name):
             }
         )
     except ClientError as e:
-        logging.error(f"Delete object error: {e}")
+        notify_error_and_stop_script(f"Delete object error: {e}")
 
 
 def upload_file(s3_client, file_name, bucket, **kwargs):
@@ -316,6 +319,11 @@ def backup_file_on_s3(backup_file):
     list_files = get_list_files(s3_client, s3_bucket_name)
     delete_old_files(s3_client, list_files, s3_bucket_name)
     upload_file(s3_client, backup_file, s3_bucket_name, **config)
+
+
+def delete_local_file(file_name):
+    subprocess.run(f"rm -rf {file_name}", shell=True)
+    return True
 
 
 def main():
