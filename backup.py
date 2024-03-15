@@ -57,7 +57,6 @@ def get_common_config():
         local_db_backup_file_path=local_db_backup_file_path,
         local_filestore_backup_file_path=local_filestore_backup_file_path,
         s3_storage_class=s3_storage_class,
-
     )
 
 
@@ -202,7 +201,6 @@ def compress_backup_files():
     subprocess.run(
         f'cd {local_backup_folder} && tar -cf "{local_backup_file_name}" {local_db_backup_file_name} {local_filestore_backup_file_name}',
         shell=True)
-
     return os.path.join(local_backup_folder, local_backup_file_name)
 
 
@@ -216,7 +214,6 @@ def get_bucket_name(s3_client, **kwargs):
     except ClientError as e:
         error_code = e.response['Error']['Code']
         if error_code == '404':  # Bucket not found (doesn't exist)
-            # Create the bucket since it doesn't exist
             s3_client.create_bucket(Bucket=s3_bucket_name)
             logging.info(f"Bucket '{s3_bucket_name}' created successfully!")
         else:
@@ -227,9 +224,7 @@ def get_bucket_name(s3_client, **kwargs):
 def get_list_files(s3_client, bucket_name):
     try:
         response = s3_client.list_objects_v2(Bucket=bucket_name)
-        # Check if objects exist in the bucket
         if 'Contents' in response:
-            # Extract object names (keys) from the response
             object_names = [obj['Key'] for obj in response['Contents']]
             return object_names
     except ClientError as e:
@@ -244,7 +239,6 @@ def delete_old_files(s3_client, list_files, bucket_name):
     old_files = []
     current_datetime = datetime.now(timezone.utc)
     for file_name in list_files:
-        # 2024-03-14_06-37-21
         date_str = re.search(r'\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}', file_name)
         if not date_str:
             continue
