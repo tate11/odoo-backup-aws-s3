@@ -1,1 +1,1 @@
-* * * * * /usr/local/bin/python /backup.py
+00 00 * * * /usr/local/bin/python /backup.py >> /var/log/backup.log 2>&1

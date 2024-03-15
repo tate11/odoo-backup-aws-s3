@@ -36,9 +36,9 @@ def notify_error_and_stop_script(error):
 
 def get_common_config():
     s3_storage_class = "STANDARD_IA"
-    secret_path = os.environ.get('BACKUP_SECRET_PATH', '~/.aws')
-    db_config_file = os.path.join(secret_path, 'odoo-db.json')
-    server_config_file = os.path.join(secret_path, 'odoo-server.json')
+    secret_path = os.environ.get('BACKUP_SECRET_PATH', '/root/.aws')
+    db_config_file = os.path.join(secret_path, 'db.json')
+    server_config_file = os.path.join(secret_path, 'server.json')
     local_backup_folder = '/tmp/odoo-backup'
     subprocess.run(f'mkdir -p {local_backup_folder}', shell=True)
 
@@ -64,9 +64,7 @@ def get_common_config():
 
 def get_db_config():
     common_config = get_common_config()
-    # fixme
     db_config_file = common_config.get('db_config_file')
-    db_config_file = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/odoo-db.json"
     with open(db_config_file, 'r') as f:
         config = json.load(f)
         return {**common_config, **config}
@@ -97,9 +95,7 @@ def backup_db():
 def get_server_config():
     common_config = get_common_config()
     db_config = get_db_config()
-    # fixme:
     server_config_file = common_config.get('server_config_file')
-    server_config_file = "/home/xmars/dev/odoo-project/odoo-backup-aws-s3-docker/secret/odoo-server.json"
     with open(server_config_file, 'r') as f:
         config = json.load(f)
     key_file = config.get('key_file')
@@ -268,7 +264,7 @@ def upload_file(s3_client, file_name, bucket, **kwargs):
     object_name = os.path.basename(file_name)
     try:
         s3_client.upload_file(file_name, bucket, object_name, ExtraArgs={'StorageClass': s3_storage_class})
-
+        asyncio.run(send_telegram_message(f'Backup success a file named {file_name}'))
     except ClientError as e:
         notify_error_and_stop_script(f'AWS S3: Upload backup file failed with error: {e}')
     return True
@@ -284,12 +280,10 @@ def backup_file_on_s3(backup_file):
 
 
 def main():
-    # backup_db()
-    # backup_filestore()
-    # backup_file = compress_backup_files()
-    backup_file = "/tmp/odoo-backup/cl-1303_2024-03-14_06-37-21.tar.gz"
-    # backup_file_on_s3(backup_file)
-    notify_error_and_stop_script('well we? welll')
+    backup_db()
+    backup_filestore()
+    backup_file = compress_backup_files()
+    backup_file_on_s3(backup_file)
 
 
 main()
