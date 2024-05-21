@@ -35,7 +35,7 @@ This script is designed to backup Odoo databases and filestores to AWS S3.
 
    - **_credentials_**
 
-     ```
+     ```config
      [default]
      aws_access_key_id = YOUR_ACCESS_KEY
      aws_secret_access_key = YOUR_SECRET_KEY
@@ -43,7 +43,7 @@ This script is designed to backup Odoo databases and filestores to AWS S3.
 
    - **_config_**
 
-     ```
+     ```config
      [default]
      region=us-east-1
      ```
