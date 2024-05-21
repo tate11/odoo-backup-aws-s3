@@ -20,9 +20,5 @@ jobs:
             - name: Build & Publish image
               run: |
                   cd ${{ github.workspace }}
-                  python -V
-                  python3 -V 
-                  pip -V
-                  pip3 -V
                   docker build -t ${{ vars.ODOO_IMAGE_TAG }} .
                   docker push ${{ vars.ODOO_IMAGE_TAG }}
