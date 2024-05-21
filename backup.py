@@ -368,7 +368,7 @@ def backup_file_on_s3(backup_file):
     upload_file(s3_client, backup_file, s3_bucket_name, **config)
 
 
-def delete_local_file(file_name):
+def delete_local_file():
     config = get_config()
     local_backup_folder = config.get("local_backup_folder")
     files_and_dirs = os.listdir(local_backup_folder)
@@ -378,7 +378,7 @@ def delete_local_file(file_name):
     days_to_retain = config.get("num_day_to_retain")
     for file in files:
         if is_older_file(file, days_to_retain):
-            subprocess.run(f"rm -rf {file_name}", shell=True)
+            subprocess.run(f"rm -rf {file}", shell=True)
     return True
 
 
@@ -388,7 +388,7 @@ def main():
     backup_filestore()
     backup_file = compress_backup_files()
     backup_file_on_s3(backup_file)
-    delete_local_file(backup_file)
+    delete_local_file()
 
 
 main()
