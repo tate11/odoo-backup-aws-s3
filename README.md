@@ -53,7 +53,7 @@ This script is designed to backup Odoo databases and filestores to AWS S3.
    ```shell
    docker run -d xmars/odoo-backup-aws-s3 -v <secret_folder_path>:/root/.aws
 
-3. If you want to run _backup.py_ script directly, create secret files in '~/.aws' and run script
+3. (Optional) If you want to run _backup.py_ script directly, create secret files in '~/.aws' and run script
 
     ```shell
     python3 -m venv venv
