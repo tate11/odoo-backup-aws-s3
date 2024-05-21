@@ -161,4 +161,8 @@ cython_debug/
 #.idea/
 .idea
 .vscode
-secret*
+# secret
+secret-*/
+secret/**
+!secret/
+!secret/.gitignore
