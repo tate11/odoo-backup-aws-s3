@@ -374,7 +374,7 @@ def delete_local_file(file_name):
     files_and_dirs = os.listdir(local_backup_folder)
 
     # Filter out directories, only keep files
-    files = [f for f in files_and_dirs if os.path.isfile(os.path.join(folder_path, f))]
+    files = [f for f in files_and_dirs if os.path.isfile(os.path.join(local_backup_folder, f))]
     days_to_retain = config.get("num_day_to_retain")
     for file in files:
         if is_older_file(file, days_to_retain):
