@@ -39,28 +39,11 @@ def get_common_config():
     secret_path = os.environ.get("BACKUP_SECRET_PATH", "/root/.aws")
     db_config_file = os.path.join(secret_path, "db.json")
     server_config_file = os.path.join(secret_path, "server.json")
-    # fixme: remove duplicate
-    local_backup_folder = "/tmp/odoo-backup"
-    subprocess.run(f"mkdir -p {local_backup_folder}", shell=True)
-
-    local_db_backup_file_name = "backup.sql"
-    local_filestore_backup_file_name = "filestore.tar.gz"
-    local_db_backup_file_path = os.path.join(
-        local_backup_folder, local_db_backup_file_name
-    )
-    local_filestore_backup_file_path = os.path.join(
-        local_backup_folder, local_filestore_backup_file_name
-    )
 
     return dict(
         secret_path=secret_path,
         db_config_file=db_config_file,
         server_config_file=server_config_file,
-        local_db_backup_file_name=local_db_backup_file_name,
-        local_filestore_backup_file_name=local_filestore_backup_file_name,
-        local_backup_folder=local_backup_folder,
-        local_db_backup_file_path=local_db_backup_file_path,
-        local_filestore_backup_file_path=local_filestore_backup_file_path,
         s3_storage_class=s3_storage_class,
     )
 
@@ -102,6 +85,8 @@ def get_config():
 
     final_config.update(
         **dict(
+            local_db_backup_file_name=local_db_backup_file_name,
+            local_filestore_backup_file_name=local_filestore_backup_file_name,
             local_backup_folder=local_backup_folder,
             local_db_backup_file_path=local_db_backup_file_path,
             local_filestore_backup_file_path=local_filestore_backup_file_path,
@@ -138,8 +123,8 @@ def execute_server_command(ssh, command):
 def get_odoo_container_id(ssh, **kwargs):
     odoo_docker_image = kwargs.get("odoo_docker_image")
     command = (
-        "docker ps -q -a | xargs docker inspect --format '{{.Id}} {{.Config.Image}}' | awk -v img=\"%s\" '$2 == img {print $1}'"
-        % odoo_docker_image
+            "docker ps -q -a | xargs docker inspect --format '{{.Id}} {{.Config.Image}}' | awk -v img=\"%s\" '$2 == img {print $1}'"
+            % odoo_docker_image
     )
     return execute_server_command(ssh, command).strip()
 
