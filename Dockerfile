@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends postgresql-client cron python3 python3-pip
+    apt-get install -y --no-install-recommends postgresql-client cron python3-full
 
 COPY ./requirements.txt requirements.txt
 RUN pip3 install -r requirements.txt
