@@ -1,7 +1,19 @@
 FROM debian:bookworm-slim
 
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3 as the default python and pip commands
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1 \
+    && update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends postgresql-client cron python3-full python3-pip
+    apt-get install -y --no-install-recommends postgresql-client cron
 
 COPY ./requirements.txt requirements.txt
 RUN pip3 install -r requirements.txt
