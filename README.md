@@ -27,9 +27,12 @@ This script is designed to backup Odoo databases and filestores to AWS S3.
        "server_port": 22,
        "key_file": "private-key.pem - private key file to ssh to server - add the key file with the same name to the secret folder",
        "datadir_path": "datadir_folder_path",
+       "local_backup_path": "/tmp/odoo-backup",
        "odoo_docker_image": "if your Odoo server is running on host, ignore this parameter",
        "telegram_token": "telegram_bot_token_to_send_notifications",
-       "telegram_channel": "telegram_channel_id"
+       "telegram_channel": "telegram_channel_id",
+       "put_to_aws_s3": true,
+       "num_day_to_retain": 7
      }
      ```
 
