@@ -158,10 +158,10 @@ def execute_backup_db_normal(ssh, **kwargs):
     port = kwargs.get("db_port")
     db_name = kwargs.get("db_name")
     local_db_backup_file_path = kwargs.get("local_db_backup_file_path")
-    server_db_backup_file_path = f"/tmp/{db_name}_{datetime.now().timestamp()}"
+    server_db_backup_file_path = f"/tmp/{db_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.sql"
 
     try:
-        command = f"export PGPASSWORD={password} && pg_dump -h {host} -p {port} -U {user} --no-owner --format=c {db_name} > {server_db_backup_file_path}"
+        command = f"export PGPASSWORD={password} && pg_dump -h {host} -p {port} -U {user} --no-owner --file={server_db_backup_file_path} {db_name}"
         execute_server_command(ssh, command)
         sftp_client = ssh.open_sftp()
         sftp_client.get(
@@ -180,11 +180,11 @@ def execute_backup_db_docker(ssh, **kwargs):
     port = kwargs.get("db_port")
     db_name = kwargs.get("db_name")
     local_db_backup_file_path = kwargs.get("local_db_backup_file_path")
-    server_db_backup_file_path = f"/tmp/{db_name}_{datetime.now().timestamp()}.sql"
+    server_db_backup_file_path = f"/tmp/{db_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.sql"
 
     try:
         container_id = get_odoo_container_id(ssh, **kwargs)
-        command = f"export PGPASSWORD={password} && pg_dump -h {host} -p {port} -U {user} --no-owner --format=c {db_name} > {server_db_backup_file_path}"
+        command = f"export PGPASSWORD={password} && pg_dump -h {host} -p {port} -U {user} --no-owner --file={server_db_backup_file_path} {db_name}"
         docker_command = f'docker exec {container_id} sh -c "{command}"'
         execute_server_command(ssh, docker_command)
         execute_server_command(
